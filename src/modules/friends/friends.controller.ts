@@ -10,6 +10,11 @@ export class FriendsController {
     res.status(HTTP_STATUS.OK).json(new ApiResponse(HTTP_STATUS.OK, friends, 'Friends list retrieved'));
   });
 
+  static getSuggestions = asyncHandler(async (req: Request, res: Response) => {
+    const suggestions = await FriendsService.getSuggestions(req.user!.userId);
+    res.status(HTTP_STATUS.OK).json(new ApiResponse(HTTP_STATUS.OK, suggestions, 'Friend suggestions retrieved'));
+  });
+
   static getRequests = asyncHandler(async (req: Request, res: Response) => {
     const requests = await FriendsService.getPendingRequests(req.user!.userId);
     res.status(HTTP_STATUS.OK).json(new ApiResponse(HTTP_STATUS.OK, requests, 'Pending requests retrieved'));

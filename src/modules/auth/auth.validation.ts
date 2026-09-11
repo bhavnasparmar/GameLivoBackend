@@ -26,6 +26,12 @@ export const verifyOtpSchema = z.object({
   referralCode: z.string().optional(),
 });
 
+// New: verify OTP after registration (phone or email)
+export const verifyRegistrationOtpSchema = z.object({
+  contact: z.string().min(3), // phone number or email
+  otp: z.string().length(6, 'OTP must be 6 digits'),
+});
+
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token required'),
 });

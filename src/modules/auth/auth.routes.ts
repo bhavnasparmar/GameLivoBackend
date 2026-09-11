@@ -8,6 +8,7 @@ import {
   loginPasswordSchema,
   sendOtpSchema,
   verifyOtpSchema,
+  verifyRegistrationOtpSchema,
   refreshTokenSchema,
 } from './auth.validation.js';
 
@@ -18,6 +19,7 @@ router.use(authLimiter);
 router.post('/otp/send', validate({ body: sendOtpSchema }), AuthController.sendOtp);
 router.post('/otp/verify', validate({ body: verifyOtpSchema }), AuthController.verifyOtp);
 router.post('/register', validate({ body: registerSchema }), AuthController.register);
+router.post('/register/verify-otp', validate({ body: verifyRegistrationOtpSchema }), AuthController.verifyRegistrationOtp);
 router.post('/login', validate({ body: loginPasswordSchema }), AuthController.login);
 router.post('/refresh', validate({ body: refreshTokenSchema }), AuthController.refresh);
 router.post('/logout', authenticate, AuthController.logout);

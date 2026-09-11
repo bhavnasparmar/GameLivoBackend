@@ -192,6 +192,19 @@ User.init(
       type: DataTypes.JSON,
       allowNull: false,
       defaultValue: [],
+      get() {
+        const rawValue = this.getDataValue('friends');
+        if (!rawValue) return [];
+        if (typeof rawValue === 'string') {
+          try {
+            const parsed = JSON.parse(rawValue);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        }
+        return Array.isArray(rawValue) ? rawValue : [];
+      },
     },
     gameStats: {
       type: DataTypes.JSON,

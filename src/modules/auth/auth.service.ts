@@ -77,7 +77,7 @@ export class AuthService {
     email?: string;
     password?: string;
     referralCode?: string;
-  }): Promise<{ user: IUserDocument; accessToken: string; refreshToken: string }> {
+  }): Promise<{ user: IUserDocument; message: string; devOtp?: string; contact: string; contactType: 'phone' | 'email' }> {
     const query: any[] = [{ username: params.username }];
     if (params.phone) query.push({ phone: params.phone });
     if (params.email) query.push({ email: params.email });
@@ -107,8 +107,60 @@ export class AuthService {
       passwordHash,
       referralCode: this.generateReferralCode(),
       referredBy: params.referralCode,
+      isVerified: false, // not verified yet
       coins: 1000 + (params.referralCode ? 250 : 0),
     });
+
+    // Generate OTP and send to phone or email
+    const otp = generateOTP(6);
+    const contact = params.phone || params.email!;
+    const contactType: 'phone' | 'email' = params.phone ? 'phone' : 'email';
+    // Save OTP keyed by contact (phone or email)
+    const otpKey = `otp:${contact}`;
+    await cache.set(otpKey, otp, 300); // 5 min expiry
+
+    return {
+      user,
+      message: params.phone
+        ? 'OTP sent to your phone number. Please verify to complete registration.'
+        : 'OTP sent to your email address. Please verify to complete registration.',
+      devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
+      contact,
+      contactType,
+    };
+  }
+
+  static async verifyRegistrationOtp(params: {
+    contact: string; // phone or email
+    otp: string;
+  }): Promise<{ user: IUserDocument; accessToken: string; refreshToken: string }> {
+    const otpKey = `otp:${params.contact}`;
+    const storedOtp = await cache.get(otpKey);
+
+    if (!storedOtp) {
+      throw ApiError.badRequest('OTP has expired. Please register again.');
+    }
+    if (storedOtp !== params.otp) {
+      throw ApiError.badRequest('Invalid OTP. Please enter the correct code.');
+    }
+
+    // OTP is correct — delete it
+    await cache.del(otpKey);
+
+    // Find the user by phone or email
+    const isEmail = params.contact.includes('@');
+    const user = await User.findOne({
+      where: isEmail
+        ? { email: params.contact }
+        : { phone: params.contact },
+    });
+
+    if (!user) {
+      throw ApiError.notFound('User not found. Please register again.');
+    }
+
+    // Mark as verified
+    await user.update({ isVerified: true });
 
     const payload = {
       userId: user.id,
@@ -120,7 +172,6 @@ export class AuthService {
 
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken({ userId: user.id });
-
     await cache.set(`refresh:${user.id}`, refreshToken, 7 * 24 * 60 * 60);
 
     return { user, accessToken, refreshToken };

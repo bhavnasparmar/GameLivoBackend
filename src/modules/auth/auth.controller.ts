@@ -24,7 +24,21 @@ export class AuthController {
   static register = asyncHandler(async (req: Request, res: Response) => {
     const result = await AuthService.registerWithPassword(req.body);
     res.status(HTTP_STATUS.CREATED).json(
-      new ApiResponse(HTTP_STATUS.CREATED, result, 'Account registered successfully')
+      new ApiResponse(HTTP_STATUS.CREATED, {
+        contact: result.contact,
+        contactType: result.contactType,
+        devOtp: result.devOtp,
+        userId: result.user.id,
+      }, result.message)
+    );
+  });
+
+  // New endpoint: verify OTP after registration (email or phone)
+  static verifyRegistrationOtp = asyncHandler(async (req: Request, res: Response) => {
+    const { contact, otp } = req.body;
+    const result = await AuthService.verifyRegistrationOtp({ contact, otp });
+    res.status(HTTP_STATUS.OK).json(
+      new ApiResponse(HTTP_STATUS.OK, result, 'Account verified and logged in successfully')
     );
   });
 
