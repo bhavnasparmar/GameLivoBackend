@@ -3,12 +3,15 @@ import { AuthenticatedSocket } from '../types/socket.js';
 import { registerLobbySocketHandlers } from '../modules/lobby/lobby.socket.js';
 import { registerMatchSocketHandlers } from '../modules/match/match.socket.js';
 import { registerChatSocketHandlers } from '../modules/chat/chat.socket.js';
+import { registerFriendsSocketHandlers } from '../modules/friends/friends.socket.js';
 import { User } from '../modules/user/user.model.js';
 import { logger } from '../utils/logger.js';
 
 export function registerAllSocketHandlers(io: Server, socket: AuthenticatedSocket): void {
-  // Update User Online status
+  // Update User Online status and join user's private channel
   if (socket.user?.userId) {
+    socket.join(`user:${socket.user.userId}`);
+
     User.update(
       { isOnline: true, lastActive: new Date() },
       { where: { id: socket.user.userId } }
@@ -19,6 +22,7 @@ export function registerAllSocketHandlers(io: Server, socket: AuthenticatedSocke
   registerLobbySocketHandlers(io, socket);
   registerMatchSocketHandlers(io, socket);
   registerChatSocketHandlers(io, socket);
+  registerFriendsSocketHandlers(io, socket);
 
   // Handle Disconnect
   socket.on('disconnect', async (reason) => {
