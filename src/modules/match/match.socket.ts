@@ -18,50 +18,23 @@ interface IQueuedPlayer {
   timeSeconds: number;
   entryFee: number;
   joinedAt: number;
-  timer?: NodeJS.Timeout;
 }
 
-// In-memory matchmaking queue per game
+// In-memory matchmaking queue per game (only real online players)
 const matchmakingQueues = new Map<string, IQueuedPlayer[]>();
-
-const BOT_NAMES = [
-  'Vikram Sharma',
-  'Aarav Patel',
-  'Ananya Gupta',
-  'Rohan Mehta',
-  'Aditya Rao',
-  'Sneha Iyer',
-  'Kavya Deshmukh',
-  'Aryan Nair',
-];
-
-function getRandomBot(rating = 1420) {
-  const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-  const botRating = rating + Math.floor(Math.random() * 80 - 40);
-  return {
-    userId: `bot_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-    username: name,
-    avatar: '',
-    rating: botRating,
-    isBot: true,
-  };
-}
 
 function removeFromQueue(socketId: string) {
   for (const [gameId, queue] of matchmakingQueues.entries()) {
     const idx = queue.findIndex((p) => p.socketId === socketId);
     if (idx !== -1) {
       const [removed] = queue.splice(idx, 1);
-      if (removed.timer) {
-        clearTimeout(removed.timer);
-      }
       logger.info(`[Matchmaking] Removed user ${removed.user.username} (${socketId}) from ${gameId} queue`);
     }
   }
 }
 
 export function registerMatchSocketHandlers(io: Server, socket: AuthenticatedSocket): void {
-  // Join Matchmaking Queue (Quick Match)
+  // Join Matchmaking Queue (Quick Match - Real Online Players Only)
   socket.on(
     SOCKET_EVENTS.MATCH_QUEUE_JOIN,
     async (data: { gameId?: string; timeSeconds?: number; entryFee?: number }) => {
@@ -82,15 +55,14 @@ export function registerMatchSocketHandlers(io: Server, socket: AuthenticatedSoc
         }
         const queue = matchmakingQueues.get(gameId)!;
 
-        // Check if there is an opponent already waiting in queue
-        const opponentIdx = queue.findIndex((p) => p.user.userId !== userId);
+        // Check if there is a REAL online human player waiting in queue
+        const opponentIdx = queue.findIndex(
+          (p) => p.user.userId !== userId && p.socketId !== socket.id
+        );
 
         if (opponentIdx !== -1) {
-          // Pair found!
+          // Real opponent online & waiting!
           const [opponent] = queue.splice(opponentIdx, 1);
-          if (opponent.timer) {
-            clearTimeout(opponent.timer);
-          }
 
           const isCurrentWhite = Math.random() < 0.5;
           const whitePlayer = isCurrentWhite
@@ -129,9 +101,11 @@ export function registerMatchSocketHandlers(io: Server, socket: AuthenticatedSoc
           io.to(`match:${match.id}`).emit(SOCKET_EVENTS.MATCH_FOUND, matchPayload);
           io.to(`match:${match.id}`).emit(SOCKET_EVENTS.GAME_START, matchPayload);
 
-          logger.info(`[Matchmaking] Paired real players ${username} vs ${opponent.user.username} in match ${match.id}`);
+          logger.info(
+            `[Matchmaking] Paired real online players ${username} vs ${opponent.user.username} in match ${match.id}`
+          );
         } else {
-          // No waiting human player: add to queue with fallback timer
+          // No real online player waiting yet: add to queue and wait for a real opponent
           const queuedPlayer: IQueuedPlayer = {
             socketId: socket.id,
             socket,
@@ -142,55 +116,10 @@ export function registerMatchSocketHandlers(io: Server, socket: AuthenticatedSoc
             joinedAt: Date.now(),
           };
 
-          // Fallback: If no human joins within 5 seconds, match with simulated opponent
-          queuedPlayer.timer = setTimeout(async () => {
-            const currentQueue = matchmakingQueues.get(gameId);
-            if (!currentQueue) return;
-            const selfIdx = currentQueue.findIndex((p) => p.socketId === socket.id);
-            if (selfIdx === -1) return;
-
-            currentQueue.splice(selfIdx, 1);
-
-            const botOpponent = getRandomBot(1420);
-            const isUserWhite = Math.random() < 0.5;
-            const whitePlayer = isUserWhite
-              ? queuedPlayer.user
-              : botOpponent;
-            const blackPlayer = isUserWhite
-              ? botOpponent
-              : queuedPlayer.user;
-
-            const match = await MatchService.createMatchFromQueue(
-              gameId,
-              [whitePlayer, blackPlayer],
-              timeSeconds,
-              entryFee
-            );
-
-            socket.matchId = match.id;
-            socket.join(`match:${match.id}`);
-
-            const matchPayload = {
-              matchId: match.id,
-              gameId: match.gameId,
-              mode: 'quick_match',
-              players: match.players,
-              whitePlayer: match.players[0],
-              blackPlayer: match.players[1],
-              currentTurnUserId: match.currentTurnUserId,
-              gameState: match.gameState,
-              timeSeconds,
-              startedAt: match.startedAt,
-            };
-
-            socket.emit(SOCKET_EVENTS.MATCH_FOUND, matchPayload);
-            socket.emit(SOCKET_EVENTS.GAME_START, matchPayload);
-
-            logger.info(`[Matchmaking] Matched ${username} with ${botOpponent.username} in match ${match.id}`);
-          }, 4500);
-
           queue.push(queuedPlayer);
-          logger.info(`[Matchmaking] User ${username} queued for ${gameId} (${timeSeconds}s)`);
+          logger.info(
+            `[Matchmaking] User ${username} queued for ${gameId} (${timeSeconds}s). Waiting for a real online opponent...`
+          );
         }
       } catch (err) {
         logger.error('[Socket] MATCH_QUEUE_JOIN error:', err);
