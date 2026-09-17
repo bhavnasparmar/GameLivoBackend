@@ -220,8 +220,8 @@ export class AuthService {
     const { userId } = verifyRefreshToken(oldRefreshToken);
 
     const storedToken = await cache.get(`refresh:${userId}`);
-    if (!storedToken || storedToken !== oldRefreshToken) {
-      throw ApiError.unauthorized('Invalid or expired refresh token');
+    if (storedToken && storedToken !== oldRefreshToken) {
+      throw ApiError.unauthorized('Invalid or rotated refresh token');
     }
 
     const user = await User.findByPk(userId);

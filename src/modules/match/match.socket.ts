@@ -206,20 +206,23 @@ export function registerMatchSocketHandlers(io: Server, socket: AuthenticatedSoc
       match.gameState = updatedGameState;
       match.changed('gameState', true);
 
-      // Rotate turn to next player
-      const players = match.players || [];
-      const playerIds = players.map((p) => p.userId);
-      const currentIndex = playerIds.indexOf(userId);
+      // Rotate turn to next player (or honor moveData.nextTurnUserId)
+      if (moveData?.nextTurnUserId) {
+        match.currentTurnUserId = moveData.nextTurnUserId;
+      } else {
+        const players = match.players || [];
+        const playerIds = players.map((p) => p.userId);
+        const currentIndex = playerIds.indexOf(userId);
 
-      if (currentIndex !== -1 && playerIds.length > 1) {
-        const nextIndex = (currentIndex + 1) % playerIds.length;
-        match.currentTurnUserId = playerIds[nextIndex];
-      } else if (players.length === 2) {
-        // Fallback for 2-player game
-        match.currentTurnUserId =
-          match.currentTurnUserId === players[0]?.userId
-            ? players[1]?.userId
-            : players[0]?.userId;
+        if (currentIndex !== -1 && playerIds.length > 1) {
+          const nextIndex = (currentIndex + 1) % playerIds.length;
+          match.currentTurnUserId = playerIds[nextIndex];
+        } else if (players.length === 2) {
+          match.currentTurnUserId =
+            match.currentTurnUserId === players[0]?.userId
+              ? players[1]?.userId
+              : players[0]?.userId;
+        }
       }
 
       await match.save();

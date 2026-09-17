@@ -60,7 +60,7 @@ export function registerLobbySocketHandlers(io: Server, socket: AuthenticatedSoc
           gameId,
           mode: data.mode || 'private',
           hostId: userId,
-          maxPlayers: Math.min(4, Math.max(2, data.maxPlayers || 2)),
+          maxPlayers: Math.min(8, Math.max(2, data.maxPlayers || 2)),
           minPlayers: 2,
           entryFee: Math.max(0, data.entryFee || 0),
           prizePool: 0,
@@ -129,7 +129,7 @@ export function registerLobbySocketHandlers(io: Server, socket: AuthenticatedSoc
         const isAlreadyInRoom = currentPlayers.some((p) => p.userId === userId);
 
         if (!isAlreadyInRoom && currentPlayers.length >= lobby.maxPlayers) {
-          socket.emit(SOCKET_EVENTS.ERROR, { message: 'This room is already full (2/2 players).' });
+          socket.emit(SOCKET_EVENTS.ERROR, { message: `This room is already full (${lobby.players?.length || 0}/${lobby.maxPlayers} players).` });
           return;
         }
 
@@ -229,8 +229,8 @@ export function registerLobbySocketHandlers(io: Server, socket: AuthenticatedSoc
 
         // 2. Validation: player count
         const players = lobby.players || [];
-        if (players.length < 2) {
-          socket.emit(SOCKET_EVENTS.ERROR, { message: 'Waiting for 2nd player to join the room.' });
+        if (players.length < 1) {
+          socket.emit(SOCKET_EVENTS.ERROR, { message: 'No players found in room.' });
           return;
         }
 
@@ -271,6 +271,30 @@ export function registerLobbySocketHandlers(io: Server, socket: AuthenticatedSoc
       }
     }
   );
+
+
+  // Kick Player (Host only)
+  socket.on(SOCKET_EVENTS.LOBBY_KICK_PLAYER, async (data: { targetUserId: string }) => {
+    try {
+      const lobbyId = socket.lobbyId;
+      const userId = socket.user?.userId || socket.id;
+      if (!lobbyId || !data?.targetUserId) return;
+
+      const lobby = await Lobby.findByPk(lobbyId);
+      if (!lobby || lobby.hostId !== userId) return;
+
+      lobby.players = (lobby.players || []).filter((p) => p.userId !== data.targetUserId);
+      lobby.changed('players', true);
+      await lobby.save();
+
+      io.to(`lobby:${lobby.id}`).emit(SOCKET_EVENTS.LOBBY_UPDATE, lobby);
+      if (lobby.code) {
+        io.to(`lobby:${lobby.code}`).emit(SOCKET_EVENTS.LOBBY_UPDATE, lobby);
+      }
+    } catch (err) {
+      logger.error('[LobbySocket] LOBBY_KICK_PLAYER error:', err);
+    }
+  });
 
   // Leave Lobby
   socket.on(SOCKET_EVENTS.LOBBY_LEAVE, async () => {
