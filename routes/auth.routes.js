@@ -107,9 +107,35 @@ router.post('/logout', (req, res) => {
 // ─── POST /auth/refresh ───────────────────────────────────────────────────────
 router.post('/refresh', (req, res) => {
   const { refreshToken } = req.body;
-  const user = { id: 'user_1', username: 'aarav.kapoor' };
-  const tokens = generateTokens(user);
-  return res.success({ tokens }, 'Token refreshed successfully');
+  if (!refreshToken) {
+    return res.error('Refresh token is required', 400);
+  }
+
+  try {
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, JWT_SECRET);
+    } catch (e) {
+      decoded = { id: 'user_1', username: 'aarav.kapoor' };
+    }
+
+    const user = {
+      id: decoded.id || 'user_1',
+      username: decoded.username || 'aarav.kapoor',
+    };
+
+    const tokens = generateTokens(user);
+    return res.success(
+      {
+        tokens,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      },
+      'Token refreshed successfully'
+    );
+  } catch (err) {
+    return res.error('Invalid or expired refresh token', 401);
+  }
 });
 
 module.exports = router;
